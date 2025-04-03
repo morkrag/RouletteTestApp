@@ -1,22 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace RouletteApp
+﻿namespace RouletteApp
 {
     public class Result
     {
-        public int _roulettePosition;
-        public int _multiplier = 1;
+        public int RoulettePosition { get; set; }
+        public int Multiplier { get; set; } = 1;
 
         public Result(int roulettePostion, int sameColorInARow) 
         {
-            _roulettePosition = roulettePostion;
+            RoulettePosition = roulettePostion;
             if (sameColorInARow > 1)
             {
-                _multiplier = roulettePostion * sameColorInARow;
+                Multiplier = roulettePostion * sameColorInARow;
             }
         }
     }

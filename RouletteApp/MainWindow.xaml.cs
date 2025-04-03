@@ -1,47 +1,58 @@
-﻿using System.Media;
-using System.Reflection.Emit;
-using System.Reflection;
-using System.Text;
+﻿using Newtonsoft.Json.Linq;
+using System.Net.Sockets;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Windows.Threading;
-using System.Threading;
 
 namespace RouletteApp
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
+        // Class functionality sumup: program boot, TCPListener boot, testing TCPClient (optional) boot, timers for notification show ups,
+        // timer for statistics panel values update according to received by TCPListener request, results generation and log, roulette values manipulation, number obj creation
+        //
+        // Note: TCPClient should not be generated in this class logic wise, neither being manipulated. It is left here commented for ease of testing.
+
         private Roulette _roulette = new Roulette();
         private List<Result> _resultLog = new List<Result>();
-        private TextBlock[] rouletteResultsDisplayBlock = new TextBlock[10];
-        private DispatcherTimer notificationPopUpTimer = new DispatcherTimer();
-        private DispatcherTimer tcpRequestCheckTimer = new DispatcherTimer();
+        private List<TextBlock> _rouletteResultsDisplayBlock = new List<TextBlock> { };
 
-        private TCPListenerTCPClientController ServerClient_Controller = new TCPListenerTCPClientController();
+        private DispatcherTimer _notificationPopUpTimer = new DispatcherTimer();
+
+        private TCPController _tcpController = new TCPController();
 
         private int sameColorCounter = 1;
 
+        private const bool _locaTcpClientEnabledForTesting = true; // change to true if you want to start local TCPClient module and test how UI acts in response to received by TCPListener request
+        private TCPClient.TCPClient _tcpClient;
+
         public MainWindow()
         {
-            //Thread TCPthread = new Thread(() =>
-            //{
-            //    lock (ServerClient_Controller)
-            //    {
-                    ServerClient_Controller.RunServerAndClient();
-            //    }
-            //});
-            //TCPthread.Start();
-            InitializeComponent();
+            Loaded += MainWindow_Loaded;
+            Closed += MainWindow_Closed;
+        }
+
+        private void MainWindow_Closed(object? sender, EventArgs e)
+        {
+            _tcpController.Stop();
+            _tcpClient?.Disconnect();
+        }
+
+        private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            _tcpController.AppropriateMessageReceived += _tcpController_AppropriateMessageReceived;
+            _tcpController.Start();
+
+            if (_locaTcpClientEnabledForTesting)
+            {
+                _tcpClient = new TCPClient.TCPClient();
+            }
+        }
+
+        private void _tcpController_AppropriateMessageReceived(object? sender, JObject jsonToDisplay)
+        {
+            UpdateStatisticsIfRequired(jsonToDisplay);
         }
 
         private void AddRandomResult_Click(object sender, RoutedEventArgs e)
@@ -55,110 +66,59 @@ namespace RouletteApp
             {
                 ResultE0.Visibility = Visibility.Visible;
             }
+
             _roulette.SpinBall();
-            Number currentNumber = new Number(_roulette._currentPostion);
+            Number currentNumber = new Number(_roulette.CurrentPostion);
+
             CheckIfColorRepeated(currentNumber);
-            GenerateResult(currentNumber._value);
-            ResultE0.Text = _roulette._currentPostion.ToString();
-            MultiplierE0.Text = "x" + _resultLog.Last()._multiplier.ToString();
+            GenerateResult(currentNumber.Value);
+
+            ResultE0.Text = _roulette.CurrentPostion.ToString();
+
+            MultiplierE0.Text = "x" + _resultLog.Last().Multiplier.ToString();
+            HideMultiplierIfRequired(MultiplierE0);
             MultiplierE0.Background = ResultE0.Background;
-            //tcpServer.Start()
-            if (MultiplierE0.Text != "x1")
-            {
-                MultiplierE0.Visibility = Visibility.Visible;
-            }
-            else
+
+            if (MultiplierE0.Text == "x1" || MultiplierE0.Text == "x0")
             {
                 MultiplierE0.Visibility = Visibility.Collapsed;
             }
-            ChangeColorAccordingToNumber(ResultE0, currentNumber._color);
+            else
+            {
+                MultiplierE0.Visibility = Visibility.Visible;
+            }
+            ChangeColorAccordingToNumber(ResultE0, currentNumber.Color);
         }
 
         private void MoveRouletteNumberResults()
         {
-            ResultE9.Text = ResultE8.Text;
-            ResultE9.Background = ResultE8.Background;
-            MakeNumberVisibleIfRequired(ResultE9, ResultE8);
+            TextBlock[] resultsElements = [ResultE9, ResultE8, ResultE7, ResultE6, ResultE5, ResultE4, ResultE3, ResultE2, ResultE1, ResultE0];
 
-            ResultE8.Text = ResultE7.Text;
-            ResultE8.Background = ResultE7.Background;
-            MakeNumberVisibleIfRequired(ResultE8, ResultE7);
+            for (int i = 0; i < resultsElements.Length - 1; i++)
+            {
+                TextBlock currentElement = resultsElements[i];
+                TextBlock previousElement = resultsElements[i + 1];
 
-            ResultE7.Text = ResultE6.Text;
-            ResultE7.Background = ResultE6.Background;
-            MakeNumberVisibleIfRequired(ResultE7, ResultE6);
-
-            ResultE6.Text = ResultE5.Text;
-            ResultE6.Background = ResultE5.Background;
-            MakeNumberVisibleIfRequired(ResultE6, ResultE5);
-
-            ResultE5.Text = ResultE4.Text;
-            ResultE5.Background = ResultE4.Background;
-            MakeNumberVisibleIfRequired(ResultE5, ResultE4);
-
-            ResultE4.Text = ResultE3.Text;
-            ResultE4.Background = ResultE3.Background;
-            MakeNumberVisibleIfRequired(ResultE4, ResultE3);
-
-            ResultE3.Text = ResultE2.Text;
-            ResultE3.Background = ResultE2.Background;
-            MakeNumberVisibleIfRequired(ResultE3, ResultE2);
-
-            ResultE2.Text = ResultE1.Text;
-            ResultE2.Background = ResultE1.Background;
-            MakeNumberVisibleIfRequired(ResultE2, ResultE1);
-
-            ResultE1.Text = ResultE0.Text;
-            ResultE1.Background = ResultE0.Background;
-            MakeNumberVisibleIfRequired(ResultE1, ResultE0);
+                currentElement.Text = previousElement.Text;
+                currentElement.Background = previousElement.Background;
+                MakeNumberVisibleIfRequired(currentElement, previousElement);
+            }
         }
 
         private void MoveRouletteMultiplierResults()
         {
-            MultiplierE9.Text = MultiplierE8.Text;
-            MultiplierE9.Background = MultiplierE8.Background;
-            MakeNumberVisibleIfRequired(MultiplierE9, MultiplierE8);
-            HideMultiplierIfRequired(MultiplierE9);
+            TextBlock[] multiplierElements = [MultiplierE9, MultiplierE8, MultiplierE7, MultiplierE6, MultiplierE5, MultiplierE4, MultiplierE3, MultiplierE2, MultiplierE1, MultiplierE0];
 
-            MultiplierE8.Text = MultiplierE7.Text;
-            MultiplierE8.Background = MultiplierE7.Background;
-            MakeNumberVisibleIfRequired(MultiplierE8, MultiplierE7);
-            HideMultiplierIfRequired(MultiplierE8);
+            for (int i = 0; i < multiplierElements.Length - 1; i++)
+            {
+                TextBlock currentElement = multiplierElements[i];
+                TextBlock previousElement = multiplierElements[i + 1];
 
-            MultiplierE7.Text = MultiplierE6.Text;
-            MultiplierE7.Background = MultiplierE6.Background;
-            MakeNumberVisibleIfRequired(MultiplierE7, MultiplierE6);
-            HideMultiplierIfRequired(MultiplierE7);
-
-            MultiplierE6.Text = MultiplierE5.Text;
-            MultiplierE6.Background = MultiplierE5.Background;
-            MakeNumberVisibleIfRequired(MultiplierE6, MultiplierE5);
-            HideMultiplierIfRequired(MultiplierE6);
-
-            MultiplierE5.Text = MultiplierE4.Text;
-            MultiplierE5.Background = MultiplierE4.Background;
-            MakeNumberVisibleIfRequired(MultiplierE5, MultiplierE4);
-            HideMultiplierIfRequired(MultiplierE5);
-
-            MultiplierE4.Text = MultiplierE3.Text;
-            MultiplierE4.Background = MultiplierE3.Background;
-            MakeNumberVisibleIfRequired(MultiplierE4, MultiplierE3);
-            HideMultiplierIfRequired(MultiplierE4);
-
-            MultiplierE3.Text = MultiplierE2.Text;
-            MultiplierE3.Background = MultiplierE2.Background;
-            MakeNumberVisibleIfRequired(MultiplierE3, MultiplierE2);
-            HideMultiplierIfRequired(MultiplierE3);
-
-            MultiplierE2.Text = MultiplierE1.Text;
-            MultiplierE2.Background = MultiplierE1.Background;
-            MakeNumberVisibleIfRequired(MultiplierE2, MultiplierE1);
-            HideMultiplierIfRequired(MultiplierE2);
-
-            MultiplierE1.Text = MultiplierE0.Text;
-            MultiplierE1.Background = MultiplierE0.Background;
-            MakeNumberVisibleIfRequired(MultiplierE1, MultiplierE0);
-            HideMultiplierIfRequired(MultiplierE1);
+                currentElement.Text = previousElement.Text;
+                currentElement.Background = previousElement.Background;
+                MakeNumberVisibleIfRequired(currentElement, previousElement);
+                HideMultiplierIfRequired(currentElement);
+            }
         }
 
         private void ChangeColorAccordingToNumber(TextBlock x, string numberColor)
@@ -185,7 +145,7 @@ namespace RouletteApp
 
         private void HideMultiplierIfRequired(TextBlock multiplier)
         {
-            if (multiplier.Text == "x1")
+            if (multiplier.Text == "x1" || multiplier.Text == "x0")
             {
                 multiplier.Visibility = Visibility.Collapsed;
             }
@@ -194,6 +154,7 @@ namespace RouletteApp
         private void GenerateResult(int number)
         {
             Result resultToLog = new Result(number, sameColorCounter);
+
             _resultLog.Add(resultToLog);
         }
 
@@ -201,8 +162,9 @@ namespace RouletteApp
         {
             if (_resultLog.Count > 0)
             {
-                Number y = new Number(_resultLog[^1]._roulettePosition);
-                if (y._color == x._color)
+                Number y = new Number(_resultLog[^1].RoulettePosition);
+
+                if (y.Color == x.Color)
                 {
                     sameColorCounter++;
                 } else
@@ -214,50 +176,55 @@ namespace RouletteApp
 
         private void ShowNotificationResult_Click(object sender, RoutedEventArgs e)
         {
-            if (!notificationPopUpTimer.IsEnabled)
+            if (!_notificationPopUpTimer.IsEnabled)
             {
-                notificationPopUpTimer.Tick += new EventHandler(timer_Tick);
-                notificationPopUpTimer.Interval = new TimeSpan(0, 0, 5);
+                _notificationPopUpTimer.Tick += new EventHandler(timer_Tick);
+                _notificationPopUpTimer.Interval = new TimeSpan(0, 0, 5);
                 Notification_StackPanel.Visibility = Visibility.Visible;
-                notificationPopUpTimer.Start();
+                _notificationPopUpTimer.Start();
             }
         }
 
         private void timer_Tick(object sender, EventArgs e)
         {
             Notification_StackPanel.Visibility = Visibility.Collapsed;
-            notificationPopUpTimer.IsEnabled = false;
+
+            _notificationPopUpTimer.IsEnabled = false;
         }
 
-        private void AdjustActivePlayerCount(int playerCountReceived)
+        private void UpdateHighestMultiplierCount(int highhestMultiplierReceived)
         {
-            ActivePlayersCount_TextBlock.Text = playerCountReceived.ToString();
-        }
-
-        private void AdjustHighestMultiplierCount(int highhestMultiplierReceived)
-        {
-            HighestMultiplier_TextBlock.Text = highhestMultiplierReceived.ToString();
-        }
-
-        private void UpdateStatisticsIfRequired(TCPListenerTCPClientController controller)
-        {
-            if (controller.jsonToPassDown.ContainsKey("activePlayers") || controller.jsonToPassDown.ContainsKey("biggestMultiplier"))
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                AdjustActivePlayerCount((int)ServerClient_Controller.jsonToPassDown["activePlayers"]);
-                AdjustHighestMultiplierCount((int)ServerClient_Controller.jsonToPassDown["biggestMultiplier"]);
+                HighestMultiplier_TextBlock.Text = "x" + highhestMultiplierReceived.ToString();
+            });
+        }
+
+        private void UpdateActivePlayersCount(int activePlayersCount)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                ActivePlayers_TextBlock.Text = activePlayersCount.ToString();
+            });
+        }
+
+        private void UpdateStatisticsIfRequired(JObject jsonToDisplay)
+        {
+            if (jsonToDisplay.Count == 2)
+            {
+                UpdateActivePlayersCount((int)jsonToDisplay["activePlayers"]);
+                UpdateHighestMultiplierCount((int)jsonToDisplay["biggestMultiplier"]);
+            }
+            else
+            {
+                try
+                {
+                    UpdateActivePlayersCount((int)jsonToDisplay["activePlayers"]);
+                } catch (Exception)
+                {
+                    UpdateHighestMultiplierCount((int)jsonToDisplay["biggestMultiplier"]);
+                }
             }
         }
-
-        //private void StatisticsUpdateTimer()
-        //{
-        //    tcpRequestCheckTimer.Tick += new EventHandler(tcpRequestCheckTimer_Tick);
-        //    tcpRequestCheckTimer.Interval = new TimeSpan(0, 0, 5);
-        //    Notification_StackPanel.Visibility = Visibility.Visible;
-        //}
-
-        //private void tcpRequestCheckTimer_Tick(object sender, EventArgs e)
-        //{
-        //    UpdateStatisticsIfRequired(ServerClient_Controller);
-        //}
     }
 }

@@ -1,9 +1,7 @@
-﻿using System;
-
-public class Number
+﻿public class Number
 {
-	public int _value {  get; }
-	public string _color { get; set; }
+	public int Value {  get; }
+	public string Color { get; set; }
 
 	public Number(int value)
 	{
@@ -11,34 +9,34 @@ public class Number
 		{
 			throw new ArgumentOutOfRangeException(nameof(value), $"Roulette numbers are from 0 to 36, {value} is out of range"); 
 		}
-		_value = value;
+		Value = value;
 		setColor();
 	}
 
 	private void setColor()
 	{
-		if (_value == 0)
+		if (Value == 0)
 		{
-			_color = "green";
-		} else if (_value > 0 && _value < 11 || _value > 18 && _value < 29)
+			Color = "green";
+		} else if (Value > 0 && Value < 11 || Value > 18 && Value < 29)
 			{
-				if (_value % 2 == 1)
+				if (Value % 2 == 1)
 				{
-					_color = "black";
+					Color = "red";
 				}
 				else
 				{
-					_color = "red";
+					Color = "black";
 				}
 		} else
 			{
-				if (_value % 2 == 1)
+				if (Value % 2 == 1)
 				{
-					_color = "black";
+					Color = "black";
 				}
 				else
 				{
-					_color = "red";
+					Color = "red";
 				}
 			}
 	}
